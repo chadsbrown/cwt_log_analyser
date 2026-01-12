@@ -1,18 +1,40 @@
 use adif_parser::parse_adi;
+use regex::Regex;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::process;
 
+const CWOPS_ROSTER_URL: &str = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRF-m4jfF0bPP-UglTk0Le0bdwB16q_tfDoiotBjhmCsQWYvO-tPA22w9ea18RAAyB9-0ZFLmDAkTqg/pubhtml?gid=1402724567&single=true&widget=false&headers=false";
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 2 {
-        eprintln!("Usage: {} <adif_file>", args[0]);
-        process::exit(1);
+    let mut check_cwops = false;
+    let mut filename: Option<&str> = None;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--cwops" | "-c" => check_cwops = true,
+            arg if !arg.starts_with('-') => filename = Some(arg),
+            other => {
+                eprintln!("Unknown option: {}", other);
+                print_usage(&args[0]);
+                process::exit(1);
+            }
+        }
+        i += 1;
     }
 
-    let filename = &args[1];
+    let filename = match filename {
+        Some(f) => f,
+        None => {
+            print_usage(&args[0]);
+            process::exit(1);
+        }
+    };
+
     let content = match fs::read_to_string(filename) {
         Ok(c) => c,
         Err(e) => {
@@ -31,6 +53,14 @@ fn main() {
 
     let total_qsos = adif.records.len();
 
+    // Collect unique callsigns
+    let mut unique_calls: HashSet<String> = HashSet::new();
+    for record in &adif.records {
+        if let Some(call) = record.call() {
+            unique_calls.insert(call.to_uppercase());
+        }
+    }
+
     // Find dupes: same callsign on same band
     let mut seen: HashSet<(String, String)> = HashSet::new();
     let mut dupe_count = 0;
@@ -48,7 +78,6 @@ fn main() {
     }
 
     // Find 10-minute window with most contacts
-    // Parse timestamps and group by 10-minute windows
     let mut timestamps: Vec<u64> = Vec::new();
 
     for record in &adif.records {
@@ -77,6 +106,97 @@ fn main() {
     } else {
         println!("Best 10-minute window: No valid timestamps found");
     }
+
+    // CWops membership analysis
+    if check_cwops {
+        println!();
+        println!("CWops Membership Analysis");
+        println!("=========================");
+
+        match fetch_cwops_roster() {
+            Ok(roster) => {
+                let mut member_count = 0;
+                let mut non_members: Vec<String> = Vec::new();
+
+                for call in &unique_calls {
+                    if is_cwops_member(call, &roster) {
+                        member_count += 1;
+                    } else {
+                        non_members.push(call.clone());
+                    }
+                }
+
+                non_members.sort();
+
+                println!("Unique CWops members worked: {}", member_count);
+                println!("Non-members worked: {}", non_members.len());
+
+                if !non_members.is_empty() {
+                    println!("Non-member callsigns:");
+                    for call in &non_members {
+                        println!("  {}", call);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Error fetching CWops roster: {}", e);
+                process::exit(1);
+            }
+        }
+    }
+}
+
+fn print_usage(program: &str) {
+    eprintln!("Usage: {} [OPTIONS] <adif_file>", program);
+    eprintln!();
+    eprintln!("Options:");
+    eprintln!("  -c, --cwops    Check contacts against CWops member roster");
+}
+
+/// Check if a callsign matches a CWops member, handling / prefixes and suffixes
+/// e.g., "K9DX/3" should match "K9DX", and "VE3/K9DX" should also match "K9DX"
+fn is_cwops_member(call: &str, roster: &HashSet<String>) -> bool {
+    // Direct match
+    if roster.contains(call) {
+        return true;
+    }
+
+    // Check each part split by "/" against the roster
+    for part in call.split('/') {
+        if roster.contains(part) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Fetch and parse the CWops member roster
+fn fetch_cwops_roster() -> Result<HashSet<String>, String> {
+    eprintln!("Fetching CWops roster...");
+
+    let response = ureq::get(CWOPS_ROSTER_URL)
+        .call()
+        .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+    let html = response
+        .into_string()
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    // Extract callsigns from <td class="s19"...>CALLSIGN</td> elements
+    let re = Regex::new(r#"<td class="s19"[^>]*>([A-Z0-9/]+)</td>"#).unwrap();
+
+    let mut roster: HashSet<String> = HashSet::new();
+
+    for cap in re.captures_iter(&html) {
+        if let Some(call) = cap.get(1) {
+            roster.insert(call.as_str().to_uppercase());
+        }
+    }
+
+    eprintln!("Loaded {} CWops members", roster.len());
+
+    Ok(roster)
 }
 
 /// Parse ADIF date (YYYYMMDD) and time (HHMMSS or HHMM) into minutes since epoch

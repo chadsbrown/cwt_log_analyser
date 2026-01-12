@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 adif_parser = { git = "https://github.com/chadsbrown/adif_parser" }
+regex = "1"
+ureq = "2"
