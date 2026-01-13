@@ -35,7 +35,7 @@ cwt_log_analyser --cwops mylog.adi
 
 ## Releases
 
-Pre-built Windows binaries are available on the [Releases page](https://github.com/chadsbrown/cwt_log_analyser/releases).
+Pre-built binaries (windows, mac, linux) are available on the [Releases page](https://github.com/chadsbrown/cwt_log_analyser/releases).
 
 ## Building
 
