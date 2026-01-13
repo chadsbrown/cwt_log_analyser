@@ -106,7 +106,7 @@ fn main() {
             best_count, start_time, end_time
         );
     } else {
-        println!("Best 10-minute window: No valid timestamps found");
+        println!("Best 10 minutes: No valid timestamps found");
     }
 
     // Station/Radio counts (if APP_DXLOG_STN or APP_N1MM_RADIO_NR are in the adif)
