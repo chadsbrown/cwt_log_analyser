@@ -11,7 +11,7 @@ This is just a fun thing I made to paste some info into 3830 when I post my scor
 - **Rate Analysis**: Finds the best 10-minute operating window by contact count
 - **CWops Membership Check**: Optionally validates contacts against the live CWops member roster, identifying which stations worked are CWops members and listing non-members
 
-The CWops membership check handles callsign variants with prefixes and suffixes (e.g., `K9DX/3` or `VE3/K9DX` will correctly match the member callsign `K9DX`).
+The CWops membership check handles callsign variants with prefixes and suffixes (e.g., `N9UNX/3` or `VE3/N9UNX` will correctly match the member callsign `N9UNX`).
 
 ## Usage
 
