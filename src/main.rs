@@ -177,16 +177,28 @@ fn print_usage(program: &str) {
 
 /// Check if a callsign matches a CWops member, handling / prefixes and suffixes
 /// e.g., "K9DX/3" should match "K9DX", and "VE3/K9DX" should also match "K9DX"
+/// Both the worked callsign and roster entries are split by "/" and compared
 fn is_cwops_member(call: &str, roster: &HashSet<String>) -> bool {
     // Direct match
     if roster.contains(call) {
         return true;
     }
 
-    // Check each part split by "/" against the roster
-    for part in call.split('/') {
-        if roster.contains(part) {
-            return true;
+    // Get the parts of the worked callsign
+    let call_parts: Vec<&str> = call.split('/').collect();
+
+    // Check each roster entry
+    for roster_call in roster {
+        // Get the parts of the roster callsign
+        let roster_parts: Vec<&str> = roster_call.split('/').collect();
+
+        // Check if any part of the worked call matches any part of the roster call
+        for call_part in &call_parts {
+            for roster_part in &roster_parts {
+                if call_part == roster_part {
+                    return true;
+                }
+            }
         }
     }
 
