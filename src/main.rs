@@ -102,7 +102,7 @@ fn main() {
         let (_, start_time) = format_timestamp(best_window_start);
         let (_, end_time) = format_timestamp(best_window_end);
         println!(
-            "Best 10-minute window: {} QSOs ({} -> {})",
+            "Best 10 minutes: {} QSOs ({} -> {})",
             best_count, start_time, end_time
         );
     } else {
