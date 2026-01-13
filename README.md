@@ -2,7 +2,7 @@
 
 A command-line tool for analysing ADIF log files from CWT (CWops Weekly Test) amateur radio contests.
 
-This is just a fun thing I wrote to paste some info into 3830 when I post my score.  If you have an idea for something to add to it, let me know!
+This is just a fun thing I made to paste some info into 3830 when I post my score.  If you have an idea for something to add to it, let me know!
 
 ## Features
 
