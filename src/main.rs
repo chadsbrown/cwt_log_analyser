@@ -11,12 +11,14 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     let mut check_cwops = false;
+    let mut verbose = false;
     let mut filename: Option<&str> = None;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--cwops" | "-c" => check_cwops = true,
+            "--verbose" | "-v" => verbose = true,
             arg if !arg.starts_with('-') => filename = Some(arg),
             other => {
                 eprintln!("Unknown option: {}", other);
@@ -90,18 +92,17 @@ fn main() {
 
     timestamps.sort();
 
-    let (best_window_start, best_count) = find_best_10min_window(&timestamps);
+    let (best_window_start, best_window_end, best_count) = find_best_10min_window(&timestamps);
 
-    println!("ADIF Log Analysis");
-    println!("=================");
     println!("Total QSOs: {}", total_qsos);
     println!("Duplicate QSOs (same call/band): {}", dupe_count);
 
     if best_count > 0 {
-        let (date_str, time_str) = format_timestamp(best_window_start);
+        let (_, start_time) = format_timestamp(best_window_start);
+        let (_, end_time) = format_timestamp(best_window_end);
         println!(
-            "Best 10-minute window: {} {} UTC with {} QSOs",
-            date_str, time_str, best_count
+            "Best 10-minute window: {} QSOs ({} -> {})",
+            best_count, start_time, end_time
         );
     } else {
         println!("Best 10-minute window: No valid timestamps found");
@@ -110,10 +111,9 @@ fn main() {
     // CWops membership analysis
     if check_cwops {
         println!();
-        println!("CWops Membership Analysis");
-        println!("=========================");
+        println!("CWops Membership Analysis:");
 
-        match fetch_cwops_roster() {
+        match fetch_cwops_roster(verbose) {
             Ok(roster) => {
                 let mut member_count = 0;
                 let mut non_members: Vec<String> = Vec::new();
@@ -151,6 +151,7 @@ fn print_usage(program: &str) {
     eprintln!();
     eprintln!("Options:");
     eprintln!("  -c, --cwops    Check contacts against CWops member roster");
+    eprintln!("  -v, --verbose  Enable verbose output");
 }
 
 /// Check if a callsign matches a CWops member, handling / prefixes and suffixes
@@ -172,8 +173,10 @@ fn is_cwops_member(call: &str, roster: &HashSet<String>) -> bool {
 }
 
 /// Fetch and parse the CWops member roster
-fn fetch_cwops_roster() -> Result<HashSet<String>, String> {
-    eprintln!("Fetching CWops roster...");
+fn fetch_cwops_roster(verbose: bool) -> Result<HashSet<String>, String> {
+    if verbose {
+        eprintln!("Fetching CWops roster...");
+    }
 
     let response = ureq::get(CWOPS_ROSTER_URL)
         .call()
@@ -194,12 +197,14 @@ fn fetch_cwops_roster() -> Result<HashSet<String>, String> {
         }
     }
 
-    eprintln!("Loaded {} CWops members", roster.len());
+    if verbose {
+        eprintln!("Loaded {} CWops members", roster.len());
+    }
 
     Ok(roster)
 }
 
-/// Parse ADIF date (YYYYMMDD) and time (HHMMSS or HHMM) into minutes since epoch
+/// Parse ADIF date (YYYYMMDD) and time (HHMMSS or HHMM) into seconds since epoch
 fn parse_datetime(date: &str, time: &str) -> Option<u64> {
     if date.len() != 8 {
         return None;
@@ -211,49 +216,52 @@ fn parse_datetime(date: &str, time: &str) -> Option<u64> {
 
     let hour: u64 = time.get(0..2)?.parse().ok()?;
     let minute: u64 = time.get(2..4)?.parse().ok()?;
+    let second: u64 = time.get(4..6).and_then(|s| s.parse().ok()).unwrap_or(0);
 
-    // Convert to minutes since a reference point (simplified calculation)
+    // Convert to seconds since a reference point (simplified calculation)
     // We don't need exact epoch time, just relative ordering
     let days = year * 365 + month * 31 + day;
-    let minutes = days * 24 * 60 + hour * 60 + minute;
+    let seconds = days * 24 * 60 * 60 + hour * 60 * 60 + minute * 60 + second;
 
-    Some(minutes)
+    Some(seconds)
 }
 
 /// Format timestamp back to date and time strings
-fn format_timestamp(minutes: u64) -> (String, String) {
-    let total_minutes = minutes;
-    let minute_of_day = total_minutes % (24 * 60);
-    let hour = minute_of_day / 60;
-    let minute = minute_of_day % 60;
+fn format_timestamp(seconds: u64) -> (String, String) {
+    let second_of_day = seconds % (24 * 60 * 60);
+    let hour = second_of_day / (60 * 60);
+    let minute = (second_of_day % (60 * 60)) / 60;
+    let second = second_of_day % 60;
 
-    let days = total_minutes / (24 * 60);
+    let days = seconds / (24 * 60 * 60);
     let year = days / 365;
     let remaining_days = days % 365;
     let month = remaining_days / 31;
     let day = remaining_days % 31;
 
     let date_str = format!("{:04}-{:02}-{:02}", year, month, day);
-    let time_str = format!("{:02}:{:02}", hour, minute);
+    let time_str = format!("{:02}:{:02}:{:02}", hour, minute, second);
 
     (date_str, time_str)
 }
 
 /// Find the 10-minute window with the most contacts using sliding window
-fn find_best_10min_window(sorted_timestamps: &[u64]) -> (u64, usize) {
+/// Returns (start_time, end_time, count)
+fn find_best_10min_window(sorted_timestamps: &[u64]) -> (u64, u64, usize) {
     if sorted_timestamps.is_empty() {
-        return (0, 0);
+        return (0, 0, 0);
     }
 
     let mut best_start = sorted_timestamps[0];
+    let mut best_end = sorted_timestamps[0];
     let mut best_count = 0;
 
     // Use sliding window approach
     let mut left = 0;
 
     for right in 0..sorted_timestamps.len() {
-        // Move left pointer to maintain 10-minute window
-        while sorted_timestamps[right] - sorted_timestamps[left] >= 10 {
+        // Move left pointer to maintain 10-minute window (600 seconds)
+        while sorted_timestamps[right] - sorted_timestamps[left] >= 600 {
             left += 1;
         }
 
@@ -261,8 +269,9 @@ fn find_best_10min_window(sorted_timestamps: &[u64]) -> (u64, usize) {
         if count > best_count {
             best_count = count;
             best_start = sorted_timestamps[left];
+            best_end = sorted_timestamps[right];
         }
     }
 
-    (best_start, best_count)
+    (best_start, best_end, best_count)
 }

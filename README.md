@@ -18,6 +18,7 @@ cwt_log_analyser [OPTIONS] <adif_file>
 
 Options:
   -c, --cwops    Check contacts against CWops member roster
+  -v, --verbose  Enable verbose output
 ```
 
 ### Examples
