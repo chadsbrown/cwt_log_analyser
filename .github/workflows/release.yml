@@ -10,7 +10,20 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: cwt_log_analyser.exe
+            asset_name: cwt_log_analyser-windows.exe
+          - os: ubuntu-latest
+            artifact_name: cwt_log_analyser
+            asset_name: cwt_log_analyser-linux
+          - os: macos-latest
+            artifact_name: cwt_log_analyser
+            asset_name: cwt_log_analyser-macos
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -24,8 +37,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cwt_log_analyser-windows
-          path: target/release/cwt_log_analyser.exe
+          name: ${{ matrix.asset_name }}
+          path: target/release/${{ matrix.artifact_name }}
 
   release:
     needs: build
@@ -34,13 +47,26 @@ jobs:
       contents: write
 
     steps:
-      - name: Download artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
-        with:
-          name: cwt_log_analyser-windows
+
+      - name: Prepare release files
+        run: |
+          mv cwt_log_analyser-windows.exe/cwt_log_analyser.exe cwt_log_analyser-windows.exe.tmp
+          rm -rf cwt_log_analyser-windows.exe
+          mv cwt_log_analyser-windows.exe.tmp cwt_log_analyser-windows.exe
+          mv cwt_log_analyser-linux/cwt_log_analyser cwt_log_analyser-linux.tmp
+          rm -rf cwt_log_analyser-linux
+          mv cwt_log_analyser-linux.tmp cwt_log_analyser-linux
+          mv cwt_log_analyser-macos/cwt_log_analyser cwt_log_analyser-macos.tmp
+          rm -rf cwt_log_analyser-macos
+          mv cwt_log_analyser-macos.tmp cwt_log_analyser-macos
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: cwt_log_analyser.exe
+          files: |
+            cwt_log_analyser-windows.exe
+            cwt_log_analyser-linux
+            cwt_log_analyser-macos
           generate_release_notes: true
