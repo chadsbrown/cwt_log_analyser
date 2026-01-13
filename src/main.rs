@@ -1,5 +1,6 @@
 use adif_parser::parse_adi;
 use regex::Regex;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
@@ -106,6 +107,26 @@ fn main() {
         );
     } else {
         println!("Best 10-minute window: No valid timestamps found");
+    }
+
+    // Station/Radio counts (if APP_DXLOG_STN or APP_N1MM_RADIO_NR are in the adif)
+    let station_fields = ["APP_DXLOG_STN", "APP_N1MM_RADIO_NR"];
+    for field_name in &station_fields {
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for record in &adif.records {
+            if let Some(value) = record.get_value(field_name) {
+                *counts.entry(value.to_uppercase()).or_insert(0) += 1;
+            }
+        }
+        if !counts.is_empty() {
+            //println!("{} counts:", field_name);
+            println!("QSOs per radio:");
+            let mut sorted: Vec<_> = counts.iter().collect();
+            sorted.sort_by(|a, b| a.0.cmp(b.0));
+            for (value, count) in sorted {
+                println!(" {}: {}", value, count);
+            }
+        }
     }
 
     // CWops membership analysis
